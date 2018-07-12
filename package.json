@@ -1,0 +1,18 @@
+{
+  "name": "slack-remove-old-files",
+  "version": "0.0.1",
+  "description": "very limited script to remove/backup old slack files using a token",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "slack"
+  ],
+  "author": "vhalitsyn",
+  "license": "ISC",
+  "dependencies": {
+    "async": "^2.6.1",
+    "request": "^2.87.0"
+  }
+}
