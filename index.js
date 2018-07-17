@@ -50,12 +50,16 @@ function _fetchMoreFiles(next) {
 
         parsedObj.files.forEach(function(file){
             console.log('discovered [' + new Date(file.created * 1000).toString() + ']: ' + file.name);
-            files.push({
-                id: file.id,
-                created: file.created,
-                downloadLink: file.url_private_download,
-                name: file.name
-            });
+            if(file.url_private_download || file.url_private){
+                files.push({
+                    id: file.id,
+                    created: file.created,
+                    downloadLink: file.url_private_download || file.url_private,
+                    name: file.name
+                });
+            } else {
+                console.log('WARN: ' + file.name + ' will be skipped because no download link is prensent');
+            }
         });
 
         page++;
@@ -89,7 +93,8 @@ function _backupAndRemove(err){
             var fileDate = new Date(file.created * 1000);
             var fileDateStr = fileDate.getFullYear() + '_' + fileDate.getMonth() + '_' + fileDate.getDay() + 
                 '_' + fileDate.getHours() + '_' + fileDate.getMinutes() + '_' + fileDate.getSeconds();
-            var fname = fileDateStr + '_' + file.name;
+            // trim file name to 200 chars to avoid ENAMETOOLONG
+            var fname = fileDateStr + '_' + file.name.substring(0, file.name.length > 200 ? 200 : file.name.length);
             console.log('backing up ' + fname);
             request
                 .get(file.downloadLink,{
@@ -115,7 +120,10 @@ function _backupAndRemove(err){
         console.log("##### No backup selected! use --backup flag to backup before removing #####");
     }
 
-    var deleteFn = backupFn;
+    var deleteFn = function(file, next){
+        next();
+    };
+
     if(doDelete){
         deleteFn = function(file, next){
             console.log('removing ' + file.name + ' id[' + file.id + ']');
