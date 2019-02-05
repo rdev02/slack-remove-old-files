@@ -1,46 +1,37 @@
-var async = require('async');
-var fs = require('fs');
-var path = require('path');
-var request = require('request');
+const async = require('async');
+const fs = require('fs');
+const path = require('path');
+const request = require('request');
 
 // FLAGS
-var BACKUP_FLAG = '--backup';
-var TOKEN_FLAG = '--token';
-var BEFORE_FLAG = '--before';
-var DELETE_FLAG = '--delete';
+const BACKUP_FLAG = '--backup';
+const TOKEN_FLAG =  '--token';
+const BEFORE_FLAG = '--before';
+const DELETE_FLAG = '--delete';
 
 // DEFAULTS
-var BACKUP_DEFAULT_LOC = './backup';
-var date = new Date();
-var DEFAULT_BEFORE = date.setTime(date.getTime() - 365 * 24 * 60 * 60 * 1000); // 1 year
+let BACKUP_DEFAULT_LOC = './backup';
+let date = new Date();
+const DEFAULT_BEFORE = date.setTime(date.getTime() - 365 * 24 * 60 * 60 * 1000); // 1 year
 
 // globals
-var SLACK_LIST_URL = 'https://slack.com/api/files.list?token={token}&page={page}&ts_to={before}';
-var SLACK_DELETE_URL = 'https://slack.com/api/files.delete';
+const SLACK_LIST_URL = 'https://slack.com/api/files.list?token={token}&page={page}&ts_to={before}';
+const SLACK_DELETE_URL = 'https://slack.com/api/files.delete';
 
-
-var backupPath = _setupBackupPath();
-var token = _readToken();
-var beforeDate = _readBeforeDate();
-var page = 1; var maxPages = 1;
-var files = [];
-
-async.whilst(_hasMoreFiles, _fetchMoreFiles, _backupAndRemove);
-
-function _fetchMoreFiles(next) {
-    var url = SLACK_LIST_URL
+const _fetchMoreFiles = (next) => {
+    const url = SLACK_LIST_URL
         .replace('{token}', token)
         .replace('{page}', page)
         .replace('{before}', beforeDate);
 
     console.log('fetching files: ' + url);
-    request.get({ url: url }, function(err, httpResponse, body){
+    request.get({ url: url }, (err, httpResponse, body) => {
         if(err || !body){
             next(err, httpResponse);
             return;
         }
 
-        var parsedObj = JSON.parse(body);
+        const parsedObj = JSON.parse(body);
         if(!parsedObj.ok){
             next('response from Slack not ok: ' + (parsedObj ? parsedObj.error : 'null') );
             return;
@@ -48,8 +39,8 @@ function _fetchMoreFiles(next) {
 
         maxPages = parsedObj.paging.pages;
 
-        parsedObj.files.forEach(function(file){
-            console.log('discovered [' + new Date(file.created * 1000).toString() + ']: ' + file.name);
+        parsedObj.files.forEach((file) => {
+            console.log('discovered [%s]: %s', new Date(file.created * 1000).toString(), file.name);
             if(file.url_private_download || file.url_private){
                 files.push({
                     id: file.id,
@@ -58,7 +49,7 @@ function _fetchMoreFiles(next) {
                     name: file.name
                 });
             } else {
-                console.log('WARN: ' + file.name + ' will be skipped because no download link is prensent');
+                console.warn('WARN: %s will be skipped because no download link is present', file.name);
             }
         });
 
@@ -67,34 +58,34 @@ function _fetchMoreFiles(next) {
     });
 }
 
-function _hasMoreFiles(){
+const _hasMoreFiles = () => {
     console.log(page + ' <= ' + maxPages);
     return page <= maxPages;
 }
 
-function _backupAndRemove(err){
+const _backupAndRemove = (err) => {
     if(err){
         console.error(err);
         return;
     }
 
-    console.log(files.length + ' about to be removed. supply --delete flag to actually remove.');
-    var doDelete = process.argv.indexOf(DELETE_FLAG) >= 0;
+    console.log('%d about to be removed. supply --delete flag to actually remove.', files.length);
+    const doDelete = process.argv.indexOf(DELETE_FLAG) >= 0;
 
-    var backupFn = function(file, next){
+    let backupFn = (file, next) => {
         next();
     };
 
     if(backupPath){
         fs.mkdirSync(backupPath);
 
-        console.log('applying backup folder: ' + backupPath);
-        backupFn = function(file, next){
-            var fileDate = new Date(file.created * 1000);
-            var fileDateStr = fileDate.getFullYear() + '_' + fileDate.getMonth() + '_' + fileDate.getDay() + 
+        console.log('applying backup folder: %s', backupPath);
+        backupFn = (file, next) => {
+            const fileDate = new Date(file.created * 1000);
+            const fileDateStr = fileDate.getFullYear() + '_' + fileDate.getMonth() + '_' + fileDate.getDay() + 
                 '_' + fileDate.getHours() + '_' + fileDate.getMinutes() + '_' + fileDate.getSeconds();
             // trim file name to 200 chars to avoid ENAMETOOLONG
-            var fname = fileDateStr + '_' + file.name.substring(0, file.name.length > 200 ? 200 : file.name.length);
+            const fname = fileDateStr + '_' + file.name.substring(0, file.name.length > 200 ? 200 : file.name.length);
             console.log('backing up ' + fname);
             request
                 .get(file.downloadLink,{
@@ -107,11 +98,11 @@ function _backupAndRemove(err){
                 })
                 .pipe(fs.createWriteStream(backupPath + path.sep + fname)
                     .on('finish', () => {
-                        console.log('download complete:', fname);
+                        console.log('download complete: %s', fname);
                         next();
                     })
                     .on('err', (err) => {
-                        console.log('download error:', fname);
+                        console.error('download error: %s', fname);
                         console.error(err.stack);
                         next(err);
                     }));
@@ -120,60 +111,84 @@ function _backupAndRemove(err){
         console.log("##### No backup selected! use --backup flag to backup before removing #####");
     }
 
-    var deleteFn = function(file, next){
+    let deleteFn = (file, next) => {
         next();
     };
 
     if(doDelete){
-        deleteFn = function(file, next){
-            console.log('removing ' + file.name + ' id[' + file.id + ']');
+        deleteFn = (file, next) => {
+            console.log('removing %s id[%s]', file.name, file.id);
             request.post({
                 url: SLACK_DELETE_URL,
                 formData: {
                     token: token,
                     file: file.id
                 }
-            }, function(err, httpResponse, body){
+            }, (err, httpResponse, body) => {
+                if(httpResponse.statusCode === 429){
+                    console.log('%s was not deleted', file.id);
+                    waitTime = httpResponse.headers['retry-after'];
+                    return next(httpResponse.statusCode);
+                }
+                file.deleted = true;
+                console.log('id %s delete status: %s', file.id, httpResponse.statusCode)
                 next(err);
             });
         };
     }
 
-    async.eachLimit(files, 15, 
-        function(file, next){
-            async.waterfall([
-                function(cbNext){
-                    backupFn(file, cbNext);
-                },
-                function(cbNext){
-                    deleteFn(file, cbNext);
-                }
-            ],function(err, res){
-                next(err);
-            });
-        }, 
-        function(err){
-            if(err){
-                console.error(err);
-                return;
-            }
+    const filesContainer = { files: files };
 
-            console.log(files.length + ' files processed.');
-    });
+    async.whilst(
+        () => {
+            console.log("Having %d file to delete", filesContainer.files.length );
+            return filesContainer.files.length > 0;
+        },
+        (whNext) => {
+            async.eachLimit(files, 15, 
+                function(file, next){
+                    async.waterfall([
+                        function(cbNext){
+                            backupFn(file, cbNext);
+                        },
+                        function(cbNext){
+                            deleteFn(file, cbNext);
+                        }
+                    ],function(err, res){
+                        next(err);
+                    });
+                }, 
+                async function(err){
+                    if(err){
+                        if(err == 429){
+                            console.log("Too many requests caught. waiting. %d seconds..", waitTime * 10);
+                            filesContainer.files = files.filter(f => !f.deleted);
+                            await new Promise(resolve => setTimeout(resolve, waitTime * 10));
+                            return whNext();
+                        }
+                        console.error(err);
+                        return;
+                    }
+                    whNext(err);
+            });
+        },
+        () => {
+            console.log('%d files processed.', files.length - filesContainer.files.length);
+        });
 }
 
-function _setupBackupPath(){
-    var backupPath = _getOptionValue(BACKUP_FLAG, BACKUP_DEFAULT_LOC);
+const _setupBackupPath = () => {
+    let backupPath = _getOptionValue(BACKUP_FLAG, BACKUP_DEFAULT_LOC);
 
     if(backupPath && fs.existsSync(backupPath)){
         throw backupPath + ' already exists. Please choose a different one';
     }
 
-    console.log('--backup path configured: ' + backupPath);
+    console.log('--backup path configured: %s', backupPath);
     return backupPath;
 }
 
-function _readToken(){
+const _readToken = () => {
     var token = _getOptionValue(TOKEN_FLAG);
     
     if(!token){
@@ -183,8 +198,8 @@ function _readToken(){
     return token;
 }
 
-function _readBeforeDate(){
-    var dateStr = _getOptionValue(BEFORE_FLAG);
+const _readBeforeDate = () => {
+    const dateStr = _getOptionValue(BEFORE_FLAG);
     if(!dateStr){
         return DEFAULT_BEFORE / 1000;
     }
@@ -193,9 +208,9 @@ function _readBeforeDate(){
     return new Date(dateStr).getTime() / 1000;
 }
 
-function _getOptionValue(flagName, defaultValue){
-    var optionIdx = process.argv.indexOf(flagName);
-    var result;
+const _getOptionValue = (flagName, defaultValue) => {
+    const optionIdx = process.argv.indexOf(flagName);
+    let result;
     if(optionIdx != -1){
         result = defaultValue;
 
@@ -206,3 +221,14 @@ function _getOptionValue(flagName, defaultValue){
 
     return result;
 }
+
+// ====================================================================================
+let backupPath = _setupBackupPath();
+let token = _readToken();
+let beforeDate = _readBeforeDate();
+let page = 1, maxPages = 1;
+let files = [];
+let waitTime = 10; //seconds
+
+// main loop
+async.whilst(_hasMoreFiles, _fetchMoreFiles, _backupAndRemove);
